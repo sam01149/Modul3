@@ -6,7 +6,7 @@ from sklearn.linear_model import LinearRegression
 import plotly.express as px
 
 # Load the dataset
-data = pd.read_csv('covid_19_indonesia_time_series_all 1.csv')
+data = pd.read_csv('covid_19_indonesia_time_series_all.csv')
 
 # Select relevant columns and sample 10% of the data
 data = data[['Date', 'Location', 'Total Deaths', 'Total Recovered', 'Population Density', 'Case Fatality Rate', 'Total Cases', 'Latitude', 'Longitude', 'New Cases']]
