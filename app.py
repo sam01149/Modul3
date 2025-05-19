@@ -36,7 +36,7 @@ st.title('COVID-19 Indonesia Dashboard')
 st.header('Interactive Map of COVID-19 Cases')
 fig_map = px.scatter_geo(data_sample, lat='Latitude', lon='Longitude', color='Predicted Total Cases',
                          hover_name='Location', size='Predicted Total Cases',
-                         projection='natural earth')
+                         projection='Indonesia', title='COVID-19 Cases in Indonesia',)
 st.plotly_chart(fig_map)
 
 # Line chart of daily new cases
