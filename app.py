@@ -8,98 +8,86 @@ import plotly.express as px
 import matplotlib.pyplot as plt
 from sklearn.metrics import silhouette_score
 
-# Load the dataset
+# Load dataset
 data = pd.read_csv('covid_19_indonesia_time_series_all.csv')
 
-# Select relevant columns and sample 10% of the data
+# Pilih kolom yang relevan dan sampling 10%
 data = data[['Date', 'Location', 'Total Deaths', 'Total Recovered', 'Population Density',
              'Case Fatality Rate', 'Total Cases', 'Latitude', 'Longitude', 'New Cases']]
 data_sample = data.sample(frac=0.1, random_state=42)
 
-# Clean the 'Case Fatality Rate' column
+# Bersihkan kolom 'Case Fatality Rate'
 data_sample['Case Fatality Rate'] = data_sample['Case Fatality Rate'].str.rstrip('%').astype('float') / 100.0
 
-# Prepare the features and target variable for regression
-features = data_sample[['Total Deaths', 'Total Recovered', 'Population Density', 'Case Fatality Rate']]
-target = data_sample['Total Cases']
+# ------------------------------
+# SUPERVISED LEARNING: Prediksi Total Kasus
+# ------------------------------
+X = data_sample[['Total Deaths', 'Total Recovered', 'Population Density', 'Case Fatality Rate']]
+y = data_sample['Total Cases']
 
-# Train the linear regression model
 model = LinearRegression()
-model.fit(features, target)
-
-# Predict the total cases
-data_sample['Predicted Total Cases'] = model.predict(features)
+model.fit(X, y)
+data_sample['Predicted Total Cases'] = model.predict(X)
 data_sample['Predicted Total Cases'] = data_sample['Predicted Total Cases'].clip(lower=0)
 
-# Streamlit App
-st.title('COVID-19 Indonesia Dashboard')
-
-# --- Interactive Map of COVID-19 Cases ---
-st.header('Interactive Map of Predicted COVID-19 Cases')
-fig_map = px.scatter_geo(
-    data_sample,
-    lat='Latitude',
-    lon='Longitude',
-    color='Predicted Total Cases',
-    hover_name='Location',
-    size='Predicted Total Cases',
-    projection='natural earth',
-    title='COVID-19 Predicted Cases in Indonesia',
-    scope='asia',
-    center={'lat': -2, 'lon': 118},
-    height=500
-)
-st.plotly_chart(fig_map)
-
-# --- Line chart of daily new cases ---
-st.header('Daily New Cases Trend')
-fig_line = px.line(data_sample.sort_values(by='Date'), x='Date', y='New Cases', title='Daily New Cases')
-st.plotly_chart(fig_line)
-
-# --- Risk Level Summary ---
-st.header('Risk Level Summary')
-median_predicted = data_sample['Predicted Total Cases'].median()
-data_sample['Risk Level'] = np.where(data_sample['Predicted Total Cases'] > median_predicted, 'High Risk', 'Low Risk')
-risk_summary = data_sample[['Location', 'Predicted Total Cases', 'Risk Level']]
-st.write(risk_summary)
-
-# --- Model Evaluation ---
-st.header('Model Evaluation')
-r2_score = model.score(features, target)
-st.write(f'R² Score: {r2_score:.2f}')
-
-# --- KMeans Clustering ---
-st.header('Clustering COVID-19 Impacted Regions (KMeans)')
-
-# Select features for clustering
+# ------------------------------
+# UNSUPERVISED LEARNING: Clustering Lokasi
+# ------------------------------
 clustering_features = data_sample[['Total Cases', 'Total Deaths', 'Total Recovered', 'Population Density']]
-
-# Normalize the data
 scaler = StandardScaler()
 scaled_features = scaler.fit_transform(clustering_features)
 
-# Fit KMeans (with 3 clusters)
 kmeans = KMeans(n_clusters=3, random_state=42)
 data_sample['Cluster'] = kmeans.fit_predict(scaled_features)
 
-# Show cluster map
-fig_cluster = px.scatter_geo(
+# Map cluster ke level risiko (berdasarkan rata-rata total kasus)
+cluster_mean = data_sample.groupby('Cluster')['Total Cases'].mean().sort_values()
+risk_mapping = {
+    cluster_mean.index[0]: 'Low Risk',
+    cluster_mean.index[1]: 'Moderate Risk',
+    cluster_mean.index[2]: 'High Risk'
+}
+data_sample['Risk Level'] = data_sample['Cluster'].map(risk_mapping)
+
+# ------------------------------
+# STREAMLIT DASHBOARD
+# ------------------------------
+st.set_page_config(layout='wide')
+st.title('COVID-19 Indonesia Dashboard')
+
+# Peta hasil clustering
+st.header('Peta Interaktif Hasil Clustering Wilayah')
+fig_cluster_map = px.scatter_geo(
     data_sample,
     lat='Latitude',
     lon='Longitude',
     color='Cluster',
     hover_name='Location',
-    title='Cluster of Regions Based on COVID-19 Data',
+    title='Cluster Wilayah Berdasarkan COVID-19',
     scope='asia',
     center={'lat': -2, 'lon': 118},
     projection='natural earth',
     height=500
 )
-st.plotly_chart(fig_cluster)
+st.plotly_chart(fig_cluster_map)
 
-# Optional: Elbow & Silhouette Method Plot
-st.subheader("Elbow Method & Silhouette Score (Optional)")
+# Grafik tren kasus harian
+st.header('Grafik Tren Kasus Harian')
+fig_trend = px.line(data_sample.sort_values(by='Date'), x='Date', y='New Cases', title='Tren Kasus Harian (New Cases)')
+st.plotly_chart(fig_trend)
 
+# Ringkasan risiko wilayah
+st.header('Ringkasan Tingkat Risiko Wilayah')
+risk_summary = data_sample[['Location', 'Predicted Total Cases', 'Risk Level']].sort_values(by='Predicted Total Cases', ascending=False)
+st.dataframe(risk_summary)
+
+# Evaluasi model regresi
+st.header('Evaluasi Model Prediksi')
+r2_score = model.score(X, y)
+st.write(f'R² Score (Akurasi Model Prediksi Total Kasus): **{r2_score:.2f}**')
+
+# Elbow & Silhouette Score
+st.subheader("Evaluasi Clustering (Elbow Method & Silhouette Score)")
 inertia = []
 silhouette = []
 k_range = range(2, 10)
@@ -112,7 +100,7 @@ for k in k_range:
 
 fig, ax1 = plt.subplots(figsize=(10, 5))
 ax1.plot(k_range, inertia, 'bo-', label='Inertia')
-ax1.set_xlabel('Number of Clusters')
+ax1.set_xlabel('Jumlah Cluster')
 ax1.set_ylabel('Inertia', color='b')
 ax1.tick_params(axis='y', labelcolor='b')
 
@@ -121,6 +109,6 @@ ax2.plot(k_range, silhouette, 'ro-', label='Silhouette Score')
 ax2.set_ylabel('Silhouette Score', color='r')
 ax2.tick_params(axis='y', labelcolor='r')
 
-plt.title('Elbow Method and Silhouette Score')
+plt.title('Elbow Method dan Silhouette Score')
 fig.tight_layout()
 st.pyplot(fig)
